@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: writing-assistant
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: FEISHU_APP_ID
+        sync: false
+      - key: FEISHU_APP_SECRET
+        sync: false
+      - key: SERVER_HOST
+        value: 0.0.0.0

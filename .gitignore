@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+data/
+*.log
+.env
+start.bat
+启动助手.bat
+runtime.log

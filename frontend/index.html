@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>养生美食写作助手</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<!-- 左侧栏：创作上下文 + 对话列表 -->
+<aside id="sidebar">
+  <div class="sidebar-header">
+    <h1>🥢 写作助手</h1>
+  </div>
+
+  <div class="panel-section">
+    <h3>📋 创作上下文</h3>
+    <div class="input-group">
+      <label>🌤️ 天气</label>
+      <input type="text" id="ctx-weather" placeholder="如：阴雨绵绵 18°C">
+    </div>
+    <div class="input-group">
+      <label>🍂 季节</label>
+      <select id="ctx-season">
+        <option value="">自动 / 不指定</option>
+        <option value="春">春</option>
+        <option value="夏">夏</option>
+        <option value="秋">秋</option>
+        <option value="冬">冬</option>
+      </select>
+    </div>
+    <div class="input-group">
+      <label>🥬 食材</label>
+      <input type="text" id="ctx-ingredients" placeholder="如：山药 薏米 红枣 枸杞">
+    </div>
+    <div class="input-group">
+      <label>📖 食谱（可选）</label>
+      <textarea id="ctx-recipe" placeholder="可粘贴已有食谱，留空则AI自动生成..." rows="3"></textarea>
+    </div>
+    <div class="input-group">
+      <label>📝 额外要求</label>
+      <input type="text" id="ctx-extra" placeholder="如：适合老人/减脂/快手菜">
+    </div>
+    <div class="input-group">
+      <label>⏱️ 口播时长</label>
+      <select id="ctx-duration">
+        <option value="30">30 秒</option>
+        <option value="60" selected>60 秒</option>
+        <option value="90">90 秒</option>
+        <option value="120">120 秒（2分钟）</option>
+        <option value="180">180 秒（3分钟）</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="sidebar-divider"></div>
+
+  <div class="sidebar-section-label">📂 对话记录</div>
+  <nav id="conversation-list"></nav>
+
+  <div class="sidebar-footer">
+    <button id="btn-settings" class="btn-settings">⚙️ API 设置</button>
+  </div>
+</aside>
+
+<!-- 中间：主对话区 -->
+<main id="chat-main">
+  <div id="chat-messages">
+    <div class="welcome-message">
+      <h2>👋 欢迎使用养生美食写作助手</h2>
+      <p>我可以帮你：</p>
+      <ul>
+        <li>🌤️ 根据天气和季节推荐养生食材</li>
+        <li>🍳 根据食材生成详细食谱</li>
+        <li>📹 生成短视频口播文案 + 内容审核</li>
+        <li>🎬 制作专业拍摄分镜脚本</li>
+      </ul>
+      <p class="hint">在左侧面板填入创作上下文，然后在右侧选择功能或直接对话</p>
+    </div>
+  </div>
+  <div id="chat-input-area">
+    <textarea id="chat-input" placeholder="输入你的需求，如：帮我推荐适合这个季节的养生汤..." rows="2"></textarea>
+    <button id="btn-send" title="发送 (Enter)">➤</button>
+  </div>
+</main>
+
+<!-- 右侧：快捷操作 + 输出面板 -->
+<aside id="context-panel">
+  <div class="panel-section">
+    <h3>⚡ 一键生成</h3>
+    <div class="quick-actions">
+      <button class="qa-btn pipeline-btn" id="btn-pipeline">🚀 一键生成全部（食谱→烹饪→口播→审核→分镜）</button>
+    </div>
+    <p class="hint" style="margin-top:8px;">根据左侧上下文一键生成完整创作流水线，口播自动送审</p>
+    <div class="quick-actions" style="margin-top:10px;">
+      <button class="qa-btn" data-action="ingredients">🌿 养生食材推荐</button>
+      <button class="qa-btn" data-action="recipe">📖 单独生成食谱</button>
+      <button class="qa-btn" data-action="cooking">🍳 单独生成烹饪方法</button>
+      <button class="qa-btn" data-action="script">🎙️ 单独生成口播文案</button>
+      <button class="qa-btn" data-action="storyboard">🎬 单独生成拍摄分镜</button>
+      <button class="qa-btn" data-action="audit" style="background:var(--bg-tertiary);border-color:var(--accent-yellow);">🛡️ 审核口播文案</button>
+    </div>
+  </div>
+
+  <div class="panel-section" id="output-section" style="display:none;">
+    <div class="output-tabs">
+      <button class="output-tab active" data-tab="content">📝 生成内容</button>
+      <button class="output-tab" data-tab="audit">🛡️ 内容审核</button>
+    </div>
+    <div id="output-content" class="output-content"></div>
+    <div id="audit-content" class="output-content" style="display:none;"></div>
+    <div class="output-header" style="margin-top:8px;">
+      <button id="btn-copy-output" class="btn-copy">📋 复制当前Tab</button>
+    </div>
+  </div>
+
+  <div class="panel-section" id="staging-section">
+    <h3>📦 内容暂存</h3>
+    <p class="hint">生成的内容会自动暂存，供后续使用</p>
+    <div class="staged-items">
+      <div class="staged-item" id="staged-recipe" style="display:none;">
+        <span class="staged-label">📖 食谱</span>
+        <span class="staged-preview"></span>
+      </div>
+      <div class="staged-item" id="staged-cooking" style="display:none;">
+        <span class="staged-label">🍳 烹饪方法</span>
+        <span class="staged-preview"></span>
+      </div>
+      <div class="staged-item" id="staged-script" style="display:none;">
+        <span class="staged-label">🎙️ 配音稿</span>
+        <span class="staged-preview"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-section" id="db-section">
+    <h3>🗄️ 食材数据库</h3>
+    <div class="db-info">
+      <span class="db-stat">📦 <strong id="db-total">121</strong> 种食材</span>
+      <span class="db-stat">📅 近30天已推荐 <strong id="db-recent">0</strong> 种</span>
+    </div>
+    <button id="btn-clear-history" class="btn-clear-history" title="清空推荐历史">🔄 重置推荐记录</button>
+  </div>
+
+  <div class="panel-section" id="feishu-debug-section">
+    <h3>🤖 飞书Bot（轮询模式）</h3>
+    <p class="hint" id="feishu-debug-status">状态：检查中...</p>
+    <p class="hint" id="feishu-polling-status" style="color:var(--accent-yellow);"></p>
+    <div style="display:flex;gap:6px;margin-top:8px;">
+      <button id="btn-feishu-check" class="qa-btn" style="flex:1;font-size:11px;">🔍 检查连接</button>
+      <button id="btn-feishu-logs" class="qa-btn" style="flex:1;font-size:11px;">📋 查看日志</button>
+    </div>
+    <div style="display:flex;gap:6px;margin-top:4px;">
+      <button id="btn-feishu-poll-start" class="qa-btn" style="flex:1;font-size:11px;background:var(--accent-green);border-color:var(--accent-green);color:#fff;">▶ 启动轮询</button>
+      <button id="btn-feishu-poll-stop" class="qa-btn" style="flex:1;font-size:11px;">⏹ 停止</button>
+    </div>
+    <button id="btn-feishu-poll-once" class="qa-btn" style="width:100%;margin-top:4px;font-size:11px;">🔄 手动轮询一次</button>
+    <div id="feishu-log-view" style="display:none;margin-top:8px;max-height:200px;overflow-y:auto;background:var(--bg-primary);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;font-size:11px;font-family:monospace;color:var(--text-muted);line-height:1.6;">
+    </div>
+    <div style="margin-top:10px;">
+      <input type="text" id="feishu-test-msg" placeholder="输入测试消息..." style="width:100%;padding:6px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);font-size:12px;">
+      <button id="btn-feishu-test" class="qa-btn" style="width:100%;margin-top:4px;font-size:11px;">🧪 模拟飞书消息（本地测试）</button>
+    </div>
+    <p class="hint" style="margin-top:6px;">💡 轮询模式无需公网IP，服务器主动拉取飞书消息并回复</p>
+  </div>
+</aside>
+
+<!-- API 设置弹窗 -->
+<div id="settings-modal" class="modal" style="display:none;">
+  <div class="modal-content">
+    <h2>⚙️ API 设置</h2>
+    <div class="input-group">
+      <label>DeepSeek API Key</label>
+      <input type="password" id="settings-apikey" placeholder="sk-...">
+      <p class="hint">密钥仅保存在浏览器本地</p>
+    </div>
+
+    <h3 style="margin-top:16px;margin-bottom:8px;font-size:13px;color:var(--text-muted);">🤖 飞书对话机器人（接收消息+回复）</h3>
+    <div class="input-group">
+      <label>App ID</label>
+      <input type="text" id="settings-feishu-appid" placeholder="cli_...">
+    </div>
+    <div class="input-group">
+      <label>App Secret</label>
+      <input type="password" id="settings-feishu-appsecret" placeholder="留空使用服务端配置">
+    </div>
+    <div class="input-group">
+      <label>回调地址（复制到飞书开放平台）</label>
+      <input type="text" id="settings-feishu-callback" readonly value="" style="background:var(--bg-card);color:var(--accent-yellow);cursor:pointer;" onclick="this.select();document.execCommand('copy');" title="点击复制">
+      <p class="hint">将此地址填入飞书开放平台「事件订阅」的请求网址</p>
+    </div>
+    <p class="hint" style="margin-top:8px;">⚠️ 首次配置时需先在飞书开放平台启用机器人能力并订阅 im.message.receive_v1 事件</p>
+    <div class="modal-actions">
+      <button id="btn-settings-save" class="btn-primary">保存</button>
+      <button id="btn-settings-cancel" class="btn-secondary">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<script src="/js/app.js"></script>
+<script src="/js/chat.js"></script>
+<script src="/js/panels.js"></script>
+</body>
+</html>
