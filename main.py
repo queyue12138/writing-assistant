@@ -5,24 +5,15 @@ import socket
 import webbrowser
 import threading
 import time
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from backend.routers import chat, generate, feishu
 from config import SERVER_HOST, SERVER_PORT, DEEPSEEK_API_KEY
 
-app = FastAPI(title="Writing Assistant", version="1.1.0")
 
-app.include_router(chat.router, prefix="/api")
-app.include_router(generate.router, prefix="/api")
-app.include_router(feishu.router, prefix="/api")
-
-frontend_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend")
-app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
-
-
-@app.on_event("startup")
-async def startup_feishu_polling():
-    """Auto-start Feishu polling if credentials are configured."""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     from backend.feishu_event import get_config_status, start_polling
     status = get_config_status()
     if status["configured"]:
@@ -31,6 +22,17 @@ async def startup_feishu_polling():
         print("[飞书Bot] 轮询已启动（每8秒检查新消息）")
     else:
         print("[飞书Bot] 未配置凭证，跳过轮询启动。请在设置中填入 App ID/Secret。")
+    yield
+
+
+app = FastAPI(title="Writing Assistant", version="1.1.0", lifespan=lifespan)
+
+app.include_router(chat.router, prefix="/api")
+app.include_router(generate.router, prefix="/api")
+app.include_router(feishu.router, prefix="/api")
+
+frontend_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend")
+app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
 
 
 def _port_in_use(host: str, port: int) -> bool:
