@@ -92,6 +92,30 @@ def _split_long_reply(text: str, max_chars: int = _MAX_REPLY_CHARS) -> list[str]
     return chunks
 
 
+# Common ingredient/recipe names to detect in conversation for dedup
+_COMMON_ITEMS = [
+    "薄荷", "柠檬", "绿茶", "红茶", "乌龙", "普洱", "菊花", "玫瑰", "桂花",
+    "红枣", "桂圆", "枸杞", "当归", "黄芪", "党参", "生姜", "陈皮", "山楂",
+    "薏米", "红豆", "绿豆", "黑豆", "莲子", "百合", "银耳", "雪梨", "枇杷",
+    "姜枣茶", "酸梅汤", "绿豆汤", "银耳羹", "花茶", "果茶", "奶茶", "奶盖",
+    "鸡汤", "排骨汤", "鱼汤", "骨头汤", "小米粥", "八宝粥", "南瓜粥", "皮蛋瘦肉粥",
+    "凉拌", "清炒", "红烧", "炖", "蒸", "煲", "煮", "烤", "煎", "炸",
+    "蜂蜜", "冰糖", "红糖", "黑糖", "姜", "蒜", "葱", "辣椒", "花椒",
+    "山药", "红薯", "南瓜", "冬瓜", "苦瓜", "黄瓜", "番茄", "菠菜", "芹菜",
+    "苹果", "香蕉", "橙子", "柚子", "葡萄", "草莓", "蓝莓", "猕猴桃",
+]
+
+
+def _extract_mentioned_items(recent_messages: list) -> set:
+    """Extract ingredient/recipe names mentioned in recent conversation."""
+    found = set()
+    text = " ".join(m["content"] for m in recent_messages if isinstance(m, dict))
+    for item in _COMMON_ITEMS:
+        if item in text:
+            found.add(item)
+    return found
+
+
 def _log_event(entry: dict):
     """Record an event for debugging."""
     entry["_time"] = datetime.now(tz_utc8).strftime("%H:%M:%S")
@@ -368,7 +392,12 @@ async def process_message(text: str, chat_key: str = "") -> str:
         "- 用短句，每句话不超过20字\n"
         "- 直接说重点，不说\"今天给大家分享\"\"接下来我们来\"等废话开头\n"
         "- 不用\"众所周知\"\"值得注意的是\"\"综上所述\"等书面语\n"
-        "- 描述食物用具体的口感、气味、颜色，不要堆砌空洞形容词"
+        "- 描述食物用具体的口感、气味、颜色，不要堆砌空洞形容词\n\n"
+        "🔄 避免重复推荐（极其重要）：\n"
+        "- 查看上方对话历史，如果某个食材或食谱已经在最近的对话中出现过，不要再推荐\n"
+        "- 同一场对话中，不能连续推荐相同的茶饮、汤品或食谱\n"
+        "- 如果用户连续问相似的问题，主动换一个不同的推荐\n"
+        "- 可以说：\"上次推荐了A，这次给你换个口味，试试B\""
     )
 
     messages = [
@@ -376,11 +405,23 @@ async def process_message(text: str, chat_key: str = "") -> str:
         {"role": "system", "content": capability_prompt},
     ]
 
+    # Scan recent conversation for already-mentioned items to avoid
+    recently_mentioned = _extract_mentioned_items(conv[-6:]) if conv else set()
+
     # Include recent conversation history
     if conv:
         messages.extend(conv[-_CONV_MAX_MESSAGES:])
 
-    messages.append({"role": "user", "content": text})
+    # Explicit reminder about what to avoid
+    if recently_mentioned:
+        avoid_hint = (
+            "\n\n⚠️ 本轮对话中已经出现过的食材/食谱："
+            + "、".join(sorted(recently_mentioned))
+            + "。请不要再推荐这些，换个不同的！"
+        )
+        messages.append({"role": "user", "content": text + avoid_hint})
+    else:
+        messages.append({"role": "user", "content": text})
 
     reply = await chat_single(messages, max_tokens=4096)
 
