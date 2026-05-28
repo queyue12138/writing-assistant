@@ -97,10 +97,28 @@ def _split_long_reply(text: str, max_chars: int = _MAX_REPLY_CHARS) -> list[str]
     return chunks
 
 
+# Common ingredient/recipe names for dedup detection
+_COMMON_ITEMS = [
+    "薄荷", "柠檬", "绿茶", "红茶", "乌龙", "普洱", "菊花", "玫瑰", "桂花",
+    "红枣", "桂圆", "枸杞", "当归", "黄芪", "党参", "生姜", "陈皮", "山楂",
+    "薏米", "红豆", "绿豆", "黑豆", "莲子", "百合", "银耳", "雪梨", "枇杷",
+    "姜枣茶", "酸梅汤", "绿豆汤", "银耳羹", "花茶", "果茶",
+    "蜂蜜", "冰糖", "红糖", "黑糖", "姜", "蒜", "葱",
+    "山药", "红薯", "南瓜", "冬瓜", "苦瓜", "黄瓜", "番茄", "菠菜", "芹菜",
+    "苹果", "香蕉", "橙子", "柚子", "葡萄", "草莓", "蓝莓", "猕猴桃",
+    "紫苏", "迷迭香", "罗勒", "肉桂", "丁香", "豆蔻", "香茅",
+    "洛神花", "蝶豆花", "金银花", "茉莉花", "栀子花", "玉兰花",
+    "牛奶", "豆奶", "椰奶", "燕麦奶", "杏仁奶",
+    "气泡水", "苏打水", "椰子水", "白开水",
+]
+
+
 def _record_recommended(text: str):
     """Extract food/ingredient names from generated text and record them."""
     import re
-    # Match common patterns in Chinese food recommendations
+    items = set()
+
+    # Method 1: Match formatted titles/names
     patterns = [
         r'《([^》]+)》',           # 《姜枣茶》
         r'【([^】]+)】',           # 【姜枣茶】
@@ -108,14 +126,17 @@ def _record_recommended(text: str):
         r'「([^」]+)」',           # 「姜枣茶」
         r'\*\*([^*]+)\*\*',       # **姜枣茶**
     ]
-    items = set()
     for p in patterns:
-        matches = re.findall(p, text)
-        for m in matches:
+        for m in re.findall(p, text):
             m = m.strip()
             if 2 <= len(m) <= 20 and not m.startswith("http"):
                 items.add(m)
-    # Also check against the safe_vocab common items list (import at top)
+
+    # Method 2: Scan for known ingredient/recipe names (reliable fallback)
+    for item in _COMMON_ITEMS:
+        if item in text:
+            items.add(item)
+
     now = time.time()
     for item in items:
         _recently_recommended[item] = now
