@@ -370,7 +370,6 @@ async def process_message(text: str, chat_key: str = "") -> str:
         "- 不用\"众所周知\"\"值得注意的是\"\"综上所述\"等书面语\n"
         "- 描述食物用具体的口感、气味、颜色，不要堆砌空洞形容词"
     )
-    )
 
     messages = [
         {"role": "system", "content": system_prompt},
