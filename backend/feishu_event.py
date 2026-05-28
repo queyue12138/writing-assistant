@@ -35,6 +35,11 @@ _conversations: dict = {}
 _CONV_MAX_MESSAGES = 20
 _CONV_TTL = 3600  # 1 hour TTL for inactive conversations
 
+# Track recently recommended items across ALL chats (dedup)
+# {(item_name, timestamp), ...} — auto-expires after RECENT_TTL seconds
+_recently_recommended: dict[str, float] = {}
+_RECENT_TTL = 86400  # 24 hours before an item can be recommended again
+
 # Max Feishu text message length (bytes); leave margin for JSON overhead
 _MAX_REPLY_CHARS = 12000
 
@@ -92,28 +97,44 @@ def _split_long_reply(text: str, max_chars: int = _MAX_REPLY_CHARS) -> list[str]
     return chunks
 
 
-# Common ingredient/recipe names to detect in conversation for dedup
-_COMMON_ITEMS = [
-    "薄荷", "柠檬", "绿茶", "红茶", "乌龙", "普洱", "菊花", "玫瑰", "桂花",
-    "红枣", "桂圆", "枸杞", "当归", "黄芪", "党参", "生姜", "陈皮", "山楂",
-    "薏米", "红豆", "绿豆", "黑豆", "莲子", "百合", "银耳", "雪梨", "枇杷",
-    "姜枣茶", "酸梅汤", "绿豆汤", "银耳羹", "花茶", "果茶", "奶茶", "奶盖",
-    "鸡汤", "排骨汤", "鱼汤", "骨头汤", "小米粥", "八宝粥", "南瓜粥", "皮蛋瘦肉粥",
-    "凉拌", "清炒", "红烧", "炖", "蒸", "煲", "煮", "烤", "煎", "炸",
-    "蜂蜜", "冰糖", "红糖", "黑糖", "姜", "蒜", "葱", "辣椒", "花椒",
-    "山药", "红薯", "南瓜", "冬瓜", "苦瓜", "黄瓜", "番茄", "菠菜", "芹菜",
-    "苹果", "香蕉", "橙子", "柚子", "葡萄", "草莓", "蓝莓", "猕猴桃",
-]
+def _record_recommended(text: str):
+    """Extract food/ingredient names from generated text and record them."""
+    import re
+    # Match common patterns in Chinese food recommendations
+    patterns = [
+        r'《([^》]+)》',           # 《姜枣茶》
+        r'【([^】]+)】',           # 【姜枣茶】
+        r'"([^"]+)"',             # "姜枣茶"
+        r'「([^」]+)」',           # 「姜枣茶」
+        r'\*\*([^*]+)\*\*',       # **姜枣茶**
+    ]
+    items = set()
+    for p in patterns:
+        matches = re.findall(p, text)
+        for m in matches:
+            m = m.strip()
+            if 2 <= len(m) <= 20 and not m.startswith("http"):
+                items.add(m)
+    # Also check against the safe_vocab common items list (import at top)
+    now = time.time()
+    for item in items:
+        _recently_recommended[item] = now
+    # Prune expired
+    _prune_recent()
 
 
-def _extract_mentioned_items(recent_messages: list) -> set:
-    """Extract ingredient/recipe names mentioned in recent conversation."""
-    found = set()
-    text = " ".join(m["content"] for m in recent_messages if isinstance(m, dict))
-    for item in _COMMON_ITEMS:
-        if item in text:
-            found.add(item)
-    return found
+def _prune_recent():
+    """Remove expired entries from recent recommendations."""
+    now = time.time()
+    expired = [k for k, v in _recently_recommended.items() if now - v > _RECENT_TTL]
+    for k in expired:
+        del _recently_recommended[k]
+
+
+def _get_recent_items() -> set:
+    """Get all items recommended within the TTL window."""
+    _prune_recent()
+    return set(_recently_recommended.keys())
 
 
 def _log_event(entry: dict):
@@ -405,19 +426,20 @@ async def process_message(text: str, chat_key: str = "") -> str:
         {"role": "system", "content": capability_prompt},
     ]
 
-    # Scan recent conversation for already-mentioned items to avoid
-    recently_mentioned = _extract_mentioned_items(conv[-6:]) if conv else set()
+    # Get recently recommended items from ALL conversations
+    recent_items = _get_recent_items()
 
     # Include recent conversation history
     if conv:
         messages.extend(conv[-_CONV_MAX_MESSAGES:])
 
-    # Explicit reminder about what to avoid
-    if recently_mentioned:
+    # Strong avoid-hint if anything was recently recommended
+    if recent_items:
         avoid_hint = (
-            "\n\n⚠️ 本轮对话中已经出现过的食材/食谱："
-            + "、".join(sorted(recently_mentioned))
-            + "。请不要再推荐这些，换个不同的！"
+            "\n\n🚫 以下食材/食谱最近24小时内已经推荐过了，绝对不能再推荐："
+            + "、".join(sorted(recent_items)[:20])
+            + "\n请推荐一个完全不同的！如果用户问茶饮，就推荐不在这个列表里的其他茶饮。"
+            + "\n实在想不出，就推荐白开水、苏打水、椰子水之类最简单的饮品，也比重复推荐强。"
         )
         messages.append({"role": "user", "content": text + avoid_hint})
     else:
@@ -427,6 +449,9 @@ async def process_message(text: str, chat_key: str = "") -> str:
 
     if not reply:
         return "抱歉，AI 未生成有效回复，请稍后重试。"
+
+    # Record what was recommended for future dedup
+    _record_recommended(reply)
 
     # Store in conversation history
     if chat_key:
